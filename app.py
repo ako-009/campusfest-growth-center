@@ -376,7 +376,11 @@ elif page == "AI Analyst":
                     try:
                         chat = analyst.make_chat(api_key, m_, st.session_state.msgs)
                         resp = chat.send_message(q)
-                        text = resp.text or "(No answer returned.)"
+                        text = resp.text or ""
+                        if not text.strip():
+                            n = len(analyst.STATE["pending"])
+                            text = (f"I've proposed {n} action(s) below. Review and click Confirm to save." if n
+                                    else "(The model returned no text. Please rephrase or ask again.)")
                         calls = analyst.tool_calls_from(resp)
                         if m_ != model:
                             text += f"\n\n_(Answered by fallback model `{m_}` because `{model}` was busy.)_"
