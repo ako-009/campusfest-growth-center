@@ -110,6 +110,34 @@ def simulate_budget_reallocation(budgets_json: str, as_of_date: str = "") -> dic
                                   "pre-event show rate defaults to 69%. Model output, not evidence."})
 
 
+def move_budget(from_campaign: str, to_campaign: str, amount_inr: int, as_of_date: str = "") -> dict:
+    """What-if for the most common question: move `amount_inr` (₹) of budget from one campaign to another
+    (names or IDs). Starts from each campaign's actual spend so far and returns current vs scenario
+    registrations and visitors, the changes, and a `summary` sentence. Report the `summary` numbers exactly."""
+    d = _data()
+    date = _date(as_of_date)
+    src, dst = _campaign_id(d, from_campaign), _campaign_id(d, to_campaign)
+    t = metrics.campaign_table(d, date).set_index("campaign_id")
+    amount = float(amount_inr)
+    if amount > t.loc[src, "spend_inr"]:
+        return {"error": f"{t.loc[src, 'campaign']} has only spent ₹{int(t.loc[src, 'spend_inr']):,}; cannot move ₹{int(amount):,}."}
+    budgets = {src: t.loc[src, "spend_inr"] - amount, dst: t.loc[dst, "spend_inr"] + amount}
+    base = metrics.simulate_reallocation(d, date, {})
+    sim = metrics.simulate_reallocation(d, date, budgets)
+    walk = 0.065
+    cur_r, new_r = int(base.registrations.sum()), int(sim.registrations.sum())
+    cur_v, new_v = int(base.visitors.sum()), int(sim.visitors.sum())
+    goal = int(metrics.target_at(d, date)["unique_external_visitors_goal"])
+    rows = sim[sim.campaign_id.isin([src, dst])].merge(
+        base[["campaign_id", "registrations", "visitors"]], on="campaign_id", suffixes=("_scenario", "_current"))
+    summary = (f"Moving ₹{int(amount):,} from {t.loc[src, 'campaign']} to {t.loc[dst, 'campaign']} (same total budget): "
+               f"registrations {cur_r:,} → {new_r:,} ({new_r - cur_r:+,}); registered visitors {cur_v:,} → {new_v:,} "
+               f"({new_v - cur_v:+,}); with ~6.5% walk-ins ≈ {round(cur_v * (1 + walk)):,} → {round(new_v * (1 + walk)):,} "
+               f"vs a goal of {goal:,}. Model estimate, not observed data.")
+    return _clean({"summary": summary, "campaign_rows": rows,
+                   "assumptions": "Observed cost per registration per campaign, +30% per doubling of spend; observed show rates; walk-ins 6.5%."})
+
+
 def list_tasks(status: str = "") -> list:
     """Tasks in the management tool, optionally filtered by status (open, in progress, done)."""
     t = db.read("tasks")
@@ -165,7 +193,7 @@ def _safe(fn):
 
 
 TOOLS = [_safe(f) for f in [get_overview, get_campaign_metrics, get_campaign_detail, get_daily_trend,
-         simulate_budget_reallocation, list_tasks, run_sql, propose_task, propose_plan_change]]
+         simulate_budget_reallocation, move_budget, list_tasks, run_sql, propose_task, propose_plan_change]]
 
 SYSTEM = """You are the Growth Analyst inside the CampusFest Growth Center, a tool a festival team uses
 to maximise ACTUAL ATTENDANCE (unique verified external visitors). Today's selected analysis date is
@@ -185,7 +213,10 @@ Rules:
    needed, and offer the closest answer the data does support.
 5. For actions (tasks, budget or status changes) call propose_task / propose_plan_change and tell the
    user to confirm them below the chat. Never claim something was saved.
-6. Be concise: lead with the answer, then 2-4 bullets of evidence, then a recommendation if useful.
+6. For "move ₹X from A to B" questions call move_budget and report its `summary` numbers exactly, before → after.
+   Never extrapolate or invent simulation results; simulated visitors are registered visitors unless the tool adds walk-ins.
+7. After proposing an action, always write a sentence telling the user what you proposed and to confirm it below.
+8. Be concise: lead with the answer, then 2-4 bullets of evidence, then a recommendation if useful.
 """
 
 
