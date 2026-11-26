@@ -93,7 +93,7 @@ Rejected: celebrity headliner, Metro/hoarding ads, broad creator awareness, disc
 
 ### The AI analyst
 
-- **Grounded:** Gemini can only get numbers by calling 9 tools: `get_overview`, `get_campaign_metrics`, `get_campaign_detail`, `get_daily_trend`, `simulate_budget_reallocation`, `list_tasks`, `run_sql` (one read-only SELECT on a read-only connection), `propose_task`, `propose_plan_change`. The tools use the same metric engine as the dashboard.
+- **Grounded:** Gemini can only get numbers by calling 10 tools: `get_overview`, `get_campaign_metrics`, `get_campaign_detail`, `get_daily_trend`, `simulate_budget_reallocation`, `move_budget` (exact before → after for "move ₹X from A to B"), `list_tasks`, `run_sql` (one read-only SELECT on a read-only connection), `propose_task`, `propose_plan_change`. The tools use the same metric engine as the dashboard.
 - **Honest:** the system prompt requires every figure to come from a tool, separates evidence from assumptions, and makes it say when the data can't answer (e.g. gender, college names, ticket revenue, sentiment). Tool errors are returned to the model so it can correct itself.
 - **Connected to execution:** it proposes tasks or plan changes; they appear as cards under the chat and are saved only when the user clicks **Confirm**.
 - **Follow-ups:** the conversation history is sent with each question.
