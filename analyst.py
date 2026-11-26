@@ -189,10 +189,15 @@ Rules:
 """
 
 
+_CLIENTS = {}  # keep the client alive: the SDK closes its connection when the Client is garbage-collected
+
+
 def make_chat(api_key, model, history):
     from google import genai
     from google.genai import types
-    client = genai.Client(api_key=api_key)
+    client = _CLIENTS.get(api_key)
+    if client is None:
+        client = _CLIENTS[api_key] = genai.Client(api_key=api_key)
     cfg = types.GenerateContentConfig(
         system_instruction=SYSTEM.format(as_of=STATE["as_of"]),
         tools=TOOLS,
