@@ -32,6 +32,7 @@ DATE_COLS = {
 SOURCE_TABLES = ["event", "targets", "campaigns", "daily", "people", "interactions",
                  "registrations", "reg_history", "checkins"]
 _ENGINE = None
+DB_ERROR = ""
 
 
 def _url():
@@ -45,18 +46,38 @@ def _url():
     for prefix in ("postgres://", "postgresql://"):
         if url.startswith(prefix):
             url = "postgresql+psycopg2://" + url[len(prefix):]
-    return url or "sqlite:///" + os.environ.get("GROWTH_DB", os.path.join(HERE, "growth.db"))
+    return url or _sqlite_url()
+
+
+def _sqlite_url():
+    return "sqlite:///" + os.environ.get("GROWTH_DB", os.path.join(HERE, "growth.db"))
 
 
 def engine():
-    global _ENGINE
+    """Postgres if DATABASE_URL works; otherwise fall back to SQLite so the app never crashes."""
+    global _ENGINE, DB_ERROR
     if _ENGINE is None:
-        _ENGINE = create_engine(_url(), pool_pre_ping=True)
+        url = _url()
+        if url.startswith("postgresql"):
+            try:
+                eng = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 10})
+                with eng.connect() as con:
+                    con.execute(text("SELECT 1"))
+                _ENGINE = eng
+            except Exception as e:
+                DB_ERROR = str(getattr(e, "orig", e)).strip().splitlines()[0][:200]
+                _ENGINE = create_engine(_sqlite_url())
+        else:
+            _ENGINE = create_engine(url)
     return _ENGINE
 
 
 def backend():
-    return "Postgres (permanent)" if engine().dialect.name == "postgresql" else "SQLite (temporary on cloud)"
+    if engine().dialect.name == "postgresql":
+        return "Postgres (permanent)"
+    if DB_ERROR:
+        return f"SQLite (temporary). Postgres connection failed: {DB_ERROR}"
+    return "SQLite (temporary on cloud)"
 
 
 def now():
