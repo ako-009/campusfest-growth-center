@@ -367,8 +367,11 @@ elif page == "AI Analyst":
             st.markdown(q)
         with st.chat_message("assistant"):
             with st.spinner("Analysing the live data…"):
+                import time
                 text, calls = None, []
-                for m_ in [model, fallback]:
+                attempts = [model, model, model] + ([fallback] if fallback and fallback != model else [])
+                first_err = ""
+                for i, m_ in enumerate(attempts):
                     analyst.STATE["pending"] = []
                     try:
                         chat = analyst.make_chat(api_key, m_, st.session_state.msgs)
@@ -376,15 +379,19 @@ elif page == "AI Analyst":
                         text = resp.text or "(No answer returned.)"
                         calls = analyst.tool_calls_from(resp)
                         if m_ != model:
-                            text += f"\n\n_(Answered by fallback model `{m_}` because `{model}` was busy or rate-limited.)_"
+                            text += f"\n\n_(Answered by fallback model `{m_}` because `{model}` was busy.)_"
                         break
                     except Exception as ex:
                         err = str(ex)
-                        busy = any(k in err for k in ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE", "overloaded"])
-                        text = (f"The analyst could not answer: the AI service is rate-limited, please retry in a minute. (`{err[:200]}`)"
-                                if busy else f"The analyst could not answer: `{err[:300]}`")
-                        if not busy:
+                        first_err = first_err or err
+                        busy = any(k in err for k in ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE", "overloaded", "500", "INTERNAL"])
+                        if not busy and i < 3:
+                            text = f"The analyst could not answer: `{err[:300]}`"
                             break
+                        text = ("The AI service is busy or rate-limited right now; please ask again in a minute. "
+                                f"(`{first_err[:200]}`)")
+                        if i < 2:
+                            time.sleep(4 * (i + 1))
             st.markdown(text)
             if calls:
                 with st.expander("Data the analyst used"):
